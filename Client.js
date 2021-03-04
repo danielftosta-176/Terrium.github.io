@@ -1,9 +1,8 @@
+
 if(typeof module !== "undefined") {
 	module.exports = Client;
 	WebSocket = require("ws");
 	EventEmitter = require("events").EventEmitter;
-	url = require("url");
-	HttpsProxyAgent = require("https-proxy-agent");
 } else {
 	this.Client = Client;
 }
@@ -18,7 +17,7 @@ function mixin(obj1, obj2) {
 };
 
 
-function Client(uri, proxy) {
+function Client(uri) {
 	EventEmitter.call(this);
 	this.uri = uri;
 	this.ws = undefined;
@@ -36,7 +35,6 @@ function Client(uri, proxy) {
 	this.noteBuffer = [];
 	this.noteBufferTime = 0;
 	this.noteFlushInterval = undefined;
-	this.proxy = proxy;
 
 	this.bindEventListeners();
 
@@ -73,12 +71,8 @@ Client.prototype.connect = function() {
 	if(!this.canConnect || !this.isSupported() || this.isConnected() || this.isConnecting())
 		return;
 	this.emit("status", "Connecting...");
-	var proxy = process.env.http_proxy || "http://" + this.proxy;
-	var parsed = url.parse(this.uri);
-	var opts = url.parse(proxy);
-	opts.secureEndpoint = parsed.protocol ? parsed.protocol == "wss:" : false;
-	var agent = new HttpsProxyAgent(opts);
-	this.ws = new WebSocket(this.uri, { agent: agent });
+	this.ws = new WebSocket(this.uri);
+	this.ws.binaryType = "arraybuffer";
 	var self = this;
 	this.ws.addEventListener("close", function(evt) {
 		self.user = undefined;
@@ -125,13 +119,13 @@ Client.prototype.connect = function() {
 		self.emit("status", "Joining channel...");
 	});
 	this.ws.addEventListener("message", function(evt) {
+		if(typeof evt.data !== 'string') return;
 		var transmission = JSON.parse(evt.data);
 		for(var i = 0; i < transmission.length; i++) {
 			var msg = transmission[i];
 			self.emit(msg.m, msg);
 		}
 	});
-	//this.ws.on("error", function() {}); //sometimes proxies give us errors so if error ignore
 };
 
 Client.prototype.bindEventListeners = function() {
@@ -317,8 +311,4 @@ Client.prototype.stopNote = function(note) {
 			this.noteBuffer.push({d: Date.now() - this.noteBufferTime, n: note, s: 1});
 		}
 	}
-};
-
-Client.prototype.sendChat = function(msg) {
-    this.sendArray([{m: "a", message: msg}]);
 };
